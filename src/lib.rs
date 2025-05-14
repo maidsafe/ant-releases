@@ -120,7 +120,7 @@ impl fmt::Display for ArchiveType {
 pub type ProgressCallback = dyn Fn(u64, u64) + Send + Sync;
 
 #[async_trait]
-pub trait AntReleaseRepoActions {
+pub trait AntReleaseRepoActions: Sync + Send {
     async fn get_latest_version(&self, release_type: &ReleaseType) -> Result<Version>;
     async fn download_release_from_s3(
         &self,
