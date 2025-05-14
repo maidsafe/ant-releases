@@ -313,7 +313,7 @@ impl AntReleaseRepoActions for AntReleaseRepository {
 
         let file_name = url
             .split('/')
-            .last()
+            .next_back()
             .ok_or_else(|| Error::CannotParseFilenameFromUrl)?;
         let dest_path = dest_dir_path.join(file_name);
 
