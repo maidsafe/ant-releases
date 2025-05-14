@@ -230,14 +230,8 @@ impl AntReleaseRepoActions for AntReleaseRepository {
     /// - The HTTP request to crates.io API fails
     /// - The received JSON data does not have a `crate.newest_version` value
     async fn get_latest_version(&self, release_type: &ReleaseType) -> Result<Version> {
-        // For the time being, the node launchpad needs to be treated as a special case, because it
-        // cannot be published.
-        if matches!(release_type, ReleaseType::NodeLaunchpad) {
-            return Ok(Version::parse("0.1.0")?);
-        }
-
         let crate_name = *RELEASE_TYPE_CRATE_NAME_MAP.get(release_type).unwrap();
-        let url = format!("https://crates.io/api/v1/crates/{}", crate_name);
+        let url = format!("https://crates.io/api/v1/crates/{crate_name}");
 
         let client = reqwest::Client::new();
         let response = client
