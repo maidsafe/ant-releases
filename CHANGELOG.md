@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1](https://github.com/maidsafe/ant-releases/compare/v0.4.0...v0.4.1) - 2025-05-15
+
+### Added
+- make AntReleaseRepoActions as Sync and Send
+
+### Fixed
+- *(ci)* update actions/cache to latest
+- fetch node-launchpad version from crates.io
+
+### Other
+- update year on license description
+- clippy fix
+
 ## [0.3.1](https://github.com/maidsafe/sn-releases/compare/v0.3.0...v0.3.1) - 2024-10-22
 
 ### Fixed
