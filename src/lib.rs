@@ -77,7 +77,7 @@ lazy_static! {
     };
 }
 
-#[derive(Clone, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Platform {
     LinuxMusl,
     LinuxMuslAarch64,
@@ -102,6 +102,22 @@ impl fmt::Display for Platform {
     }
 }
 
+impl Platform {
+    /// Parses a platform string from a release into a Platform enum variant.
+    pub fn from_release_string(s: &str) -> Result<Self> {
+        match s {
+            "x86_64-unknown-linux-musl" => Ok(Platform::LinuxMusl),
+            "aarch64-unknown-linux-musl" => Ok(Platform::LinuxMuslAarch64),
+            "arm-unknown-linux-musleabi" => Ok(Platform::LinuxMuslArm),
+            "armv7-unknown-linux-musleabihf" => Ok(Platform::LinuxMuslArmV7),
+            "x86_64-apple-darwin" => Ok(Platform::MacOs),
+            "aarch64-apple-darwin" => Ok(Platform::MacOsAarch64),
+            "x86_64-pc-windows-msvc" => Ok(Platform::Windows),
+            _ => Err(Error::UnknownPlatform(s.to_string())),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum ArchiveType {
     TarGz,
@@ -118,6 +134,29 @@ impl fmt::Display for ArchiveType {
 }
 
 pub type ProgressCallback = dyn Fn(u64, u64) + Send + Sync;
+
+/// Information about a specific binary in a release, including its version and SHA256 hash.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BinaryInfo {
+    pub name: String,
+    pub version: String,
+    pub sha256: String,
+}
+
+/// Collection of binaries for a specific platform.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PlatformBinaries {
+    pub platform: Platform,
+    pub binaries: Vec<BinaryInfo>,
+}
+
+/// Release information from the maidsafe/autonomi GitHub repository.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AutonomiReleaseInfo {
+    pub commit_hash: String,
+    pub name: String,
+    pub platform_binaries: Vec<PlatformBinaries>,
+}
 
 #[async_trait]
 pub trait AntReleaseRepoActions: Sync + Send {
@@ -140,6 +179,8 @@ pub trait AntReleaseRepoActions: Sync + Send {
     async fn download_winsw(&self, dest_path: &Path, callback: &ProgressCallback) -> Result<()>;
     fn extract_release_archive(&self, archive_path: &Path, dest_dir_path: &Path)
         -> Result<PathBuf>;
+    async fn get_latest_autonomi_release_info(&self) -> Result<AutonomiReleaseInfo>;
+    async fn get_autonomi_release_info(&self, tag_name: &str) -> Result<AutonomiReleaseInfo>;
 }
 
 impl dyn AntReleaseRepoActions {
@@ -179,6 +220,89 @@ impl AntReleaseRepository {
         }
     }
 
+    /// Parses the markdown body of a release to extract binary versions and hashes.
+    fn parse_release_body(&self, body: &str) -> Result<Vec<PlatformBinaries>> {
+        use regex::Regex;
+
+        // Parse binary versions from "## Binary Versions" section
+        let version_regex =
+            Regex::new(r"\* `([^`]+)`: v?([0-9.]+)").map_err(|_| Error::RegexError)?;
+        let mut binary_versions = HashMap::new();
+        for cap in version_regex.captures_iter(body) {
+            let name = cap[1].to_string();
+            let version = cap[2].to_string();
+            binary_versions.insert(name, version);
+        }
+
+        // Split body into lines and process line by line
+        let lines: Vec<&str> = body.lines().collect();
+        let mut platform_binaries = Vec::new();
+        let mut current_platform: Option<Platform> = None;
+        let mut current_binaries: Vec<BinaryInfo> = Vec::new();
+        let mut in_hash_table = false;
+
+        let hash_row_regex =
+            Regex::new(r"^\| ([^ ]+) \| `([a-f0-9]{64})` \|$").map_err(|_| Error::RegexError)?;
+
+        for line in lines {
+            let trimmed = line.trim();
+
+            // Check for platform header (### platform-name)
+            if trimmed.starts_with("### ") {
+                // Save previous platform if any
+                if let Some(platform) = current_platform.take() {
+                    if !current_binaries.is_empty() {
+                        platform_binaries.push(PlatformBinaries {
+                            platform,
+                            binaries: current_binaries.clone(),
+                        });
+                        current_binaries.clear();
+                    }
+                }
+
+                let platform_str = trimmed.trim_start_matches("### ");
+                if let Ok(platform) = Platform::from_release_string(platform_str) {
+                    current_platform = Some(platform);
+                    in_hash_table = false;
+                }
+            } else if trimmed == "| Binary | SHA256 Hash |" {
+                in_hash_table = true;
+            } else if trimmed.starts_with("|--------") {
+                // Continue in table
+            } else if in_hash_table && current_platform.is_some() {
+                if let Some(cap) = hash_row_regex.captures(trimmed) {
+                    let name = cap[1].to_string();
+                    let sha256 = cap[2].to_string();
+                    let version = binary_versions
+                        .get(&name)
+                        .cloned()
+                        .unwrap_or_else(|| "unknown".to_string());
+
+                    current_binaries.push(BinaryInfo {
+                        name,
+                        version,
+                        sha256,
+                    });
+                } else if !trimmed.is_empty() && !trimmed.starts_with("|") {
+                    // End of table
+                    in_hash_table = false;
+                }
+            }
+        }
+
+        // Save last platform if any
+        if let Some(platform) = current_platform {
+            if !current_binaries.is_empty() {
+                platform_binaries.push(PlatformBinaries {
+                    platform,
+                    binaries: current_binaries,
+                });
+            }
+        }
+
+        Ok(platform_binaries)
+    }
+
     async fn download_url(
         &self,
         url: &str,
@@ -208,6 +332,42 @@ impl AntReleaseRepository {
         }
 
         Ok(())
+    }
+
+    /// Fetches release information from the maidsafe/autonomi repository.
+    async fn fetch_autonomi_release(&self, url: &str) -> Result<AutonomiReleaseInfo> {
+        let client = Client::new();
+        let response = client
+            .get(url)
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .header("User-Agent", "ant-releases")
+            .send()
+            .await?;
+        if !response.status().is_success() {
+            return Err(Error::LatestReleaseNotFound("autonomi".to_string()));
+        }
+
+        let json: Value = response.json().await?;
+        let commit_hash = json["target_commitish"]
+            .as_str()
+            .ok_or_else(|| Error::LatestReleaseNotFound("commit hash not found".to_string()))?
+            .to_string();
+        let name = json["name"]
+            .as_str()
+            .ok_or_else(|| Error::LatestReleaseNotFound("release name not found".to_string()))?
+            .to_string();
+        let body = json["body"]
+            .as_str()
+            .ok_or_else(|| Error::LatestReleaseNotFound("release body not found".to_string()))?;
+
+        let platform_binaries = self.parse_release_body(body)?;
+
+        Ok(AutonomiReleaseInfo {
+            commit_hash,
+            name,
+            platform_binaries,
+        })
     }
 }
 
@@ -386,6 +546,22 @@ impl AntReleaseRepoActions for AntReleaseRepository {
             std::io::ErrorKind::Other,
             "Failed to extract archive",
         )))
+    }
+
+    async fn get_latest_autonomi_release_info(&self) -> Result<AutonomiReleaseInfo> {
+        let url = format!(
+            "{}/repos/maidsafe/autonomi/releases/latest",
+            self.github_api_base_url
+        );
+        self.fetch_autonomi_release(&url).await
+    }
+
+    async fn get_autonomi_release_info(&self, tag_name: &str) -> Result<AutonomiReleaseInfo> {
+        let url = format!(
+            "{}/repos/maidsafe/autonomi/releases/tags/{}",
+            self.github_api_base_url, tag_name
+        );
+        self.fetch_autonomi_release(&url).await
     }
 }
 

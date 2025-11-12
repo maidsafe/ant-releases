@@ -41,6 +41,8 @@ pub enum Error {
     TagNameVersionParsingFailed,
     #[error("The URL must point to a zip or gzipped tar archive")]
     UrlIsNotArchive,
+    #[error("Unknown platform: {0}")]
+    UnknownPlatform(String),
     #[error(transparent)]
     ZipError(#[from] zip::result::ZipError),
 }
