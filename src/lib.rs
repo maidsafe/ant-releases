@@ -159,7 +159,7 @@ pub struct AutonomiReleaseInfo {
 }
 
 #[async_trait]
-pub trait AntReleaseRepoActions: Sync + Send {
+pub trait AntReleaseRepoActions: Send + Sync {
     async fn get_latest_version(&self, release_type: &ReleaseType) -> Result<Version>;
     async fn download_release_from_s3(
         &self,
