@@ -225,8 +225,8 @@ impl AntReleaseRepository {
         use regex::Regex;
 
         // Parse binary versions from "## Binary Versions" section
-        let version_regex =
-            Regex::new(r"\* `([^`]+)`: v?([0-9.]+)").map_err(|_| Error::RegexError)?;
+        let version_regex = Regex::new(r"\* `([^`]+)`: v?([0-9.]+(?:-[a-zA-Z0-9.]+)?)")
+            .map_err(|_| Error::RegexError)?;
         let mut binary_versions = HashMap::new();
         for cap in version_regex.captures_iter(body) {
             let name = cap[1].to_string();
