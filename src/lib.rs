@@ -542,8 +542,7 @@ impl AntReleaseRepoActions for AntReleaseRepository {
             )));
         }
 
-        Err(Error::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        Err(Error::Io(std::io::Error::other(
             "Failed to extract archive",
         )))
     }
