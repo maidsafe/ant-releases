@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2](https://github.com/maidsafe/ant-releases/compare/v0.4.1...v0.4.2) - 2025-11-26
+
+### Added
+- functions for autonomi release information
+
+### Other
+- fix new clippy error
+- support pre-release versions
+- implement send and sync traits
+
 ## [0.4.1](https://github.com/maidsafe/ant-releases/compare/v0.4.0...v0.4.1) - 2025-05-15
 
 ### Added
