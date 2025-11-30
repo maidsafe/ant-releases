@@ -14,6 +14,7 @@ use async_trait::async_trait;
 use lazy_static::lazy_static;
 use reqwest::Client;
 use semver::Version;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::env::consts::{ARCH, OS};
@@ -77,7 +78,7 @@ lazy_static! {
     };
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum Platform {
     LinuxMusl,
     LinuxMuslAarch64,
@@ -136,7 +137,7 @@ impl fmt::Display for ArchiveType {
 pub type ProgressCallback = dyn Fn(u64, u64) + Send + Sync;
 
 /// Information about a specific binary in a release, including its version and SHA256 hash.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BinaryInfo {
     pub name: String,
     pub version: String,
@@ -144,14 +145,14 @@ pub struct BinaryInfo {
 }
 
 /// Collection of binaries for a specific platform.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct PlatformBinaries {
     pub platform: Platform,
     pub binaries: Vec<BinaryInfo>,
 }
 
 /// Release information from the maidsafe/autonomi GitHub repository.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AutonomiReleaseInfo {
     pub commit_hash: String,
     pub name: String,
